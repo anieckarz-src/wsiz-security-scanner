@@ -1,0 +1,472 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[polish]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{float}
+
+\geometry{margin=2.5cm}
+
+% Konfiguracja dla kodu Python
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    numberstyle=\tiny\color{gray},
+    numbers=left,
+    numbersep=5pt,
+    frame=single,
+    breaklines=true,
+    breakatwhitespace=true,
+    showspaces=false,
+    showstringspaces=false,
+    tabsize=4,
+    captionpos=b
+}
+
+% Nagłówek i stopka
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Security Scanner - Dokumentacja}
+\fancyhead[R]{\thepage}
+\fancyfoot[C]{}
+
+\title{Security Scanner\\Dokumentacja techniczna}
+\author{Projekt zaliczeniowy}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\newpage
+\tableofcontents
+\newpage
+
+\section{Wprowadzenie}
+
+Security Scanner to prosty skaner bezpieczeństwa napisany w języku Python, służący do testowania bezpieczeństwa stron WWW. Narzędzie analizuje dwa główne aspekty bezpieczeństwa:
+
+\begin{itemize}
+    \item \textbf{SSL/TLS i certyfikaty} -- weryfikacja ważności certyfikatów, obsługiwanych wersji protokołów TLS oraz siły szyfrowania
+    \item \textbf{Skanowanie portów} -- wykrywanie otwartych portów sieciowych i identyfikacja działających na nich usług
+\end{itemize}
+
+Projekt ma charakter edukacyjny i wszystkie testy są pasywne oraz nieinwazyjne.
+
+\section{Wymagania systemowe}
+
+Aby uruchomić Security Scanner, potrzebne są:
+
+\begin{itemize}
+    \item Python 3.7 lub nowszy
+    \item Biblioteka \texttt{certifi} (instalowana automatycznie)
+    \item Biblioteki standardowe Python: \texttt{ssl}, \texttt{socket}, \texttt{urllib.parse}
+\end{itemize}
+
+\section{Instalacja}
+
+\subsection{Instalacja zależności}
+
+Po pobraniu projektu, zainstaluj wymagane biblioteki używając pip:
+
+\begin{lstlisting}[caption=Instalacja zależności]
+pip install -r requirements.txt
+\end{lstlisting}
+
+Plik \texttt{requirements.txt} zawiera:
+\begin{lstlisting}
+certifi>=2023.0.0  # Poprawia weryfikację certyfikatów SSL na Windows
+\end{lstlisting}
+
+\section{Użycie}
+
+\subsection{Uruchomienie z domyślnym celem}
+
+Domyślnie skaner analizuje stronę \texttt{https://wsiz.edu.pl}:
+
+\begin{lstlisting}[caption=Uruchomienie z domyślnym celem]
+python security_scanner.py
+\end{lstlisting}
+
+\subsection{Uruchomienie z własnym URL}
+
+Możesz podać własny adres URL jako argument:
+
+\begin{lstlisting}[caption=Uruchomienie z własnym URL]
+python security_scanner.py https://example.com
+\end{lstlisting}
+
+\section{Architektura systemu}
+
+Skaner składa się z trzech głównych komponentów:
+
+\begin{enumerate}
+    \item \texttt{security\_scanner.py} -- główny moduł orkiestrujący skanowanie
+    \item \texttt{modules/ssl\_tls\_checker.py} -- moduł analizy SSL/TLS
+    \item \texttt{modules/port\_scanner.py} -- moduł skanowania portów
+\end{enumerate}
+
+\subsection{Struktura projektu}
+
+\begin{lstlisting}[caption=Struktura katalogów projektu]
+projekt/
+├── security_scanner.py      # Główny skrypt
+├── config.py               # Konfiguracja
+├── requirements.txt        # Zależności
+├── modules/
+│   ├── __init__.py
+│   ├── ssl_tls_checker.py  # Moduł SSL/TLS
+│   └── port_scanner.py     # Moduł skanowania portów
+└── README.md
+\end{lstlisting}
+
+\section{Opis działania}
+
+\subsection{Główny moduł (security\_scanner.py)}
+
+Główny moduł \texttt{SecurityScanner} inicjalizuje skanowanie i koordynuje pracę modułów:
+
+\begin{lstlisting}[caption=Klasa SecurityScanner]
+class SecurityScanner:
+    def __init__(self, target_url: str = None):
+        self.target_url = target_url or TARGET_URL
+        self.results = {
+            'scan_info': {
+                'target': self.target_url,
+                'timestamp': datetime.now().isoformat(),
+                'scanner_version': '1.0.0'
+            },
+            'modules': []
+        }
+    
+    def run(self):
+        # 1. Analiza SSL/TLS
+        ssl_checker = SSLTLSChecker(self.target_url)
+        ssl_result = ssl_checker.analyze()
+        
+        # 2. Skanowanie portów
+        port_scanner = PortScanner(self.target_url)
+        port_result = port_scanner.analyze()
+\end{lstlisting}
+
+\subsection{Moduł SSL/TLS (ssl\_tls\_checker.py)}
+
+Moduł \texttt{SSLTLSChecker} analizuje certyfikaty SSL/TLS i protokoły szyfrowania.
+
+\subsubsection{Pobieranie informacji o certyfikacie}
+
+Metoda \texttt{\_get\_certificate\_info()} nawiązuje bezpieczne połączenie SSL z serwerem i pobiera informacje o certyfikacie:
+
+\begin{lstlisting}[caption=Pobieranie informacji o certyfikacie]
+def _get_certificate_info(self) -> Dict:
+    # Tworzy bezpieczny kontekst SSL
+    context = ssl.create_default_context()
+    
+    # Nawiązuje połączenie z serwerem na porcie 443
+    with socket.create_connection((self.hostname, 443), 
+                                   timeout=10) as sock:
+        with context.wrap_socket(sock, 
+                                  server_hostname=self.hostname) as ssock:
+            cert = ssock.getpeercert()  # Pobiera certyfikat
+            cipher = ssock.cipher()     # Pobiera informacje o szyfrze
+            version = ssock.version()   # Pobiera wersję TLS
+            
+            return {
+                'subject': cert.get('subject'),
+                'issuer': cert.get('issuer'),
+                'not_after': cert.get('notAfter'),
+                'san': self._extract_san(cert),
+                'cipher_suite': cipher[0],
+                'tls_version': version
+            }
+\end{lstlisting}
+
+\subsubsection{Sprawdzanie ważności certyfikatu}
+
+Metoda \texttt{\_check\_certificate()} weryfikuje datę wygaśnięcia certyfikatu:
+
+\begin{lstlisting}[caption=Weryfikacja ważności certyfikatu]
+def _check_certificate(self, cert_info: Dict):
+    not_after = datetime.strptime(cert_info['not_after'], 
+                                   '%b %d %H:%M:%S %Y %Z')
+    now = datetime.now()
+    
+    if now > not_after:
+        # Certyfikat wygasł - CRITICAL
+        self.findings.append({
+            'severity': 'CRITICAL',
+            'message': 'Certyfikat wygasł!'
+        })
+    else:
+        days_left = (not_after - now).days
+        if days_left < 30:
+            severity = 'HIGH'  # Wygasa za mniej niż 30 dni
+        elif days_left < 90:
+            severity = 'MEDIUM'
+        else:
+            severity = 'PASS'  # Wszystko OK
+\end{lstlisting}
+
+\subsubsection{Testowanie wersji TLS}
+
+Metoda \texttt{\_check\_tls\_versions()} testuje, które wersje protokołu TLS są obsługiwane przez serwer:
+
+\begin{lstlisting}[caption=Testowanie wersji TLS]
+def _check_tls_versions(self) -> List[str]:
+    supported_versions = []
+    
+    tls_versions = [
+        ('TLSv1.3', ssl.PROTOCOL_TLS),
+        ('TLSv1.2', ssl.PROTOCOL_TLSv1_2),
+        ('TLSv1.1', ssl.PROTOCOL_TLSv1_1),
+        ('TLSv1.0', ssl.PROTOCOL_TLSv1),
+    ]
+    
+    for version_name, protocol in tls_versions:
+        try:
+            context = ssl.SSLContext(protocol)
+            with socket.create_connection((self.hostname, 443)) as sock:
+                with context.wrap_socket(sock) as ssock:
+                    supported_versions.append(version_name)
+        except:
+            pass  # Wersja nieobsługiwana
+    
+    # Ostrzeżenie jeśli wykryto przestarzałe wersje
+    if 'TLSv1.0' in supported_versions or 'TLSv1.1' in supported_versions:
+        self.findings.append({
+            'severity': 'HIGH',
+            'message': 'Wykryto obsługę przestarzałych wersji TLS'
+        })
+    
+    return supported_versions
+\end{lstlisting}
+
+\subsubsection{Analiza siły szyfrowania}
+
+Metoda \texttt{\_check\_ciphers()} analizuje siłę używanego szyfrowania:
+
+\begin{lstlisting}[caption=Analiza szyfrowania]
+def _check_ciphers(self) -> Dict:
+    context = ssl.create_default_context()
+    with socket.create_connection((self.hostname, 443)) as sock:
+        with context.wrap_socket(sock) as ssock:
+            cipher = ssock.cipher()
+            bits = cipher[2]  # Liczba bitów klucza
+            
+            if bits >= 256:
+                severity = 'PASS'  # Silne szyfrowanie
+            elif bits >= 128:
+                severity = 'INFO'  # Średnie
+            else:
+                severity = 'HIGH'  # Słabe
+\end{lstlisting}
+
+\subsection{Moduł skanowania portów (port\_scanner.py)}
+
+Moduł \texttt{PortScanner} skanuje porty sieciowe w poszukiwaniu otwartych usług.
+
+\subsubsection{Skanowanie portów}
+
+Metoda \texttt{\_scan\_ports()} iteruje przez listę portów i sprawdza, które są otwarte:
+
+\begin{lstlisting}[caption=Skanowanie portów]
+def _scan_ports(self, ports: List[int]) -> List[Dict]:
+    open_ports = []
+    
+    for port in ports:
+        if self._check_port(port):
+            service = self._identify_service(port)
+            open_ports.append({
+                'port': port,
+                'service': service,
+                'protocol': 'TCP'
+            })
+    
+    return open_ports
+\end{lstlisting}
+
+\subsubsection{Sprawdzanie pojedynczego portu}
+
+Metoda \texttt{\_check\_port()} próbuje nawiązać połączenie TCP z danym portem:
+
+\begin{lstlisting}[caption=Sprawdzanie pojedynczego portu]
+def _check_port(self, port: int) -> bool:
+    try:
+        # Tworzy gniazdo TCP
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(2)  # Timeout 2 sekundy
+        
+        # Próbuje połączyć się z portem
+        result = sock.connect_ex((self.hostname, port))
+        sock.close()
+        
+        # result == 0 oznacza sukces (port otwarty)
+        return result == 0
+    except:
+        return False  # Port zamknięty lub błąd
+\end{lstlisting}
+
+\subsubsection{Identyfikacja usług}
+
+Metoda \texttt{\_identify\_service()} identyfikuje usługę działającą na danym porcie na podstawie standardowych numerów portów:
+
+\begin{lstlisting}[caption=Identyfikacja usług]
+def _identify_service(self, port: int) -> str:
+    common_services = {
+        21: 'FTP',
+        22: 'SSH',
+        23: 'Telnet',
+        25: 'SMTP',
+        53: 'DNS',
+        80: 'HTTP',
+        443: 'HTTPS',
+        3306: 'MySQL',
+        5432: 'PostgreSQL',
+        27017: 'MongoDB'
+    }
+    
+    return common_services.get(port, f'Unknown (port {port})')
+\end{lstlisting}
+
+\subsubsection{Analiza bezpieczeństwa portów}
+
+Metoda \texttt{\_analyze\_ports()} analizuje wykryte otwarte porty pod kątem bezpieczeństwa:
+
+\begin{lstlisting}[caption=Analiza bezpieczeństwa portów]
+def _analyze_ports(self, open_ports: List[Dict]):
+    # Sprawdza niebezpieczne porty
+    dangerous_ports = {
+        21: ('FTP', 'HIGH', 'FTP przesyła dane w tekście jawnym'),
+        23: ('Telnet', 'CRITICAL', 'Telnet jest niezabezpieczony'),
+        3306: ('MySQL', 'HIGH', 'Baza danych nie powinna być dostępna publicznie'),
+    }
+    
+    for port_info in open_ports:
+        port = port_info['port']
+        if port in dangerous_ports:
+            service, severity, message = dangerous_ports[port]
+            self.findings.append({
+                'severity': severity,
+                'message': f'Wykryto potencjalnie niebezpieczny port {port}',
+                'recommendation': f'Ogranicz dostęp do portu {port}'
+            })
+    
+    # Sprawdza port HTTP
+    if any(p['port'] == 80 for p in open_ports):
+        self.findings.append({
+            'severity': 'MEDIUM',
+            'message': 'Port 80 (HTTP) jest otwarty',
+            'recommendation': 'Upewnij się, że ruch HTTP jest przekierowywany na HTTPS'
+        })
+\end{lstlisting}
+
+\section{Przykładowe wyniki}
+
+Poniżej przedstawiono przykładowe wyjście programu dla strony \texttt{https://wsiz.edu.pl}:
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{image.png}
+    \caption{Przykładowe wyniki skanowania dla wsiz.edu.pl}
+    \label{fig:wyniki}
+\end{figure}
+
+Jak widać na rysunku \ref{fig:wyniki}, skaner wykrył:
+
+\begin{itemize}
+    \item Obsługę protokołów TLS 1.2 i 1.3
+    \item Ważny certyfikat (wygasa za 200 dni)
+    \item Silne szyfrowanie (256 bitów)
+    \item Otwarte porty 80 (HTTP) i 443 (HTTPS)
+    \item Ostrzeżenie dotyczące otwartego portu HTTP
+\end{itemize}
+
+\section{Konfiguracja}
+
+Konfiguracja skanera znajduje się w pliku \texttt{config.py}:
+
+\begin{lstlisting}[caption=Plik config.py]
+TARGET_URL = "https://wsiz.edu.pl"  # Domyślny URL
+REQUEST_TIMEOUT = 10                 # Timeout w sekundach
+COMMON_PORTS = [80, 443, 8080, 8443, 21, 22, 25, 3306, 5432, 27017]
+\end{lstlisting}
+
+\subsection{Parametry konfiguracyjne}
+
+\begin{itemize}
+    \item \texttt{TARGET\_URL} -- domyślny adres URL do skanowania
+    \item \texttt{REQUEST\_TIMEOUT} -- maksymalny czas oczekiwania na odpowiedź (w sekundach)
+    \item \texttt{COMMON\_PORTS} -- lista portów do skanowania
+\end{itemize}
+
+\section{Interpretacja wyników}
+
+Skaner używa następujących symboli do oznaczania wyników:
+
+\begin{itemize}
+    \item \texttt{[✓]} -- Pozytywny wynik (OK)
+    \item \texttt{[✗]} -- Problem (CRITICAL/HIGH)
+    \item \texttt{[!]} -- Ostrzeżenie (MEDIUM)
+    \item \texttt{[i]} -- Informacja
+    \item \texttt{[+]} -- Wykryty otwarty port
+\end{itemize}
+
+\subsection{Poziomy ważności}
+
+\begin{description}
+    \item[CRITICAL] -- Krytyczne problemy bezpieczeństwa wymagające natychmiastowej interwencji
+    \item[HIGH] -- Wysokie ryzyko bezpieczeństwa
+    \item[MEDIUM] -- Średnie ryzyko, wymaga uwagi
+    \item[PASS] -- Brak problemów, konfiguracja poprawna
+    \item[INFO] -- Informacja pomocnicza
+\end{description}
+
+\section{Co skanuje}
+
+\subsection{SSL/TLS i Certyfikat}
+
+\begin{itemize}
+    \item Ważność certyfikatu (data wygaśnięcia)
+    \item Wydawca certyfikatu
+    \item Wersje protokołów TLS (1.0, 1.1, 1.2, 1.3)
+    \item Siła szyfrowania (bity)
+    \item SAN (Subject Alternative Names)
+    \item Weryfikacja certyfikatu
+\end{itemize}
+
+\subsection{Skanowanie Portów}
+
+\begin{itemize}
+    \item Wykrywanie otwartych portów
+    \item Identyfikacja usług (HTTP, HTTPS, FTP, SSH, MySQL, etc.)
+    \item Analiza potencjalnie niebezpiecznych portów
+    \item Standardowe porty web (80, 443, 8080, 8443)
+\end{itemize}
+
+\section{Podsumowanie}
+
+Security Scanner to narzędzie edukacyjne służące do podstawowej analizy bezpieczeństwa stron WWW. Pozwala na szybkie sprawdzenie:
+
+\begin{enumerate}
+    \item Konfiguracji SSL/TLS i ważności certyfikatów
+    \item Otwartych portów sieciowych i działających na nich usług
+    \item Potencjalnych problemów bezpieczeństwa
+\end{enumerate}
+
+Wszystkie testy są pasywne i nieinwazyjne, co oznacza, że skaner nie próbuje eksploatować wykrytych luk, a jedynie informuje o potencjalnych problemach.
+
+\vspace{1cm}
+
+\textit{Dokumentacja wygenerowana automatycznie na podstawie kodu źródłowego projektu.}
+
+\end{document}
+
