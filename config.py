@@ -1,0 +1,4 @@
+TARGET_URL = "https://wsiz.edu.pl"
+REQUEST_TIMEOUT = 10
+COMMON_PORTS = [80, 443, 8080, 8443, 21, 22, 25, 3306, 5432, 27017]
+
